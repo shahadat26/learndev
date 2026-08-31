@@ -9,7 +9,7 @@
 # ---------------------------------------------------------------------------
 
 # ---- deps: full dependency tree, used only to compile -----------------------
-FROM node:24-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 # `npm ci` (never `npm install`) installs exactly the lockfile, so the image is
 # reproducible and a build can never silently pick up a new transitive version.
@@ -17,14 +17,14 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 # ---- build: compile TypeScript and generate the Prisma client ---------------
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate && npm run build
 
 # ---- prod-deps: runtime dependencies only -----------------------------------
-FROM node:24-alpine AS prod-deps
+FROM node:26-alpine AS prod-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
@@ -34,7 +34,7 @@ COPY prisma ./prisma
 RUN npx prisma generate
 
 # ---- runner: the shipped image ----------------------------------------------
-FROM node:24-alpine AS runner
+FROM node:26-alpine AS runner
 ENV NODE_ENV=production
 WORKDIR /app
 
