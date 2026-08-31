@@ -1,0 +1,309 @@
+# =============================================================================
+# Production-shaped stack.
+#
+#   docker compose up -d --build
+#
+# Rules this file encodes (they are the whole point of the exercise):
+#   * Traefik is the ONLY service that publishes a host port. Everything else is
+#     reachable only from inside the compose networks.
+#   * Two networks. `edge` is north-south traffic (Traefik -> apps, frontend ->
+#     APIs). `backend` is east-west data traffic (APIs -> postgres).
+#     postgres is NOT on edge. frontend is NOT on backend.
+#   * Every service has a healthcheck, and dependants wait for
+#     `condition: service_healthy` rather than guessing with sleeps.
+#   * Configuration comes from the environment (12-factor). Values are
+#     interpolated from the gitignored `.env` file - copy `.env.example` first.
+#   * The docker socket is mounted READ-ONLY into Traefik. Read-write access to
+#     the socket is root on the host.
+#
+# For local debugging (host ports, hot reload, Swagger) layer the dev override:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# =============================================================================
+
+name: learndev
+
+# Bounded log files, so a crash loop cannot fill the disk.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Health probe shared shape for the Node services.
+x-node-healthcheck: &node-healthcheck
+  interval: 15s
+  timeout: 5s
+  retries: 5
+  start_period: 60s
+
+services:
+  # ---------------------------------------------------------------------------
+  # Edge router. Discovers backends from docker labels; nothing is exposed
+  # unless a container opts in with traefik.enable=true.
+  # ---------------------------------------------------------------------------
+  traefik:
+    image: traefik:v3.3
+    container_name: learndev-traefik
+    restart: unless-stopped
+    command:
+      - "--configFile=/etc/traefik/traefik.yml"
+    ports:
+      # public entryPoint
+      - "80:80"
+      # dashboard / ping entryPoint - DEV ONLY, see README
+      - "8080:8080"
+    volumes:
+      - ./infra/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      # READ-ONLY. Traefik only needs to *observe* containers.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - edge
+    healthcheck:
+      # `traefik healthcheck` calls the ping endpoint enabled in traefik.yml.
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # One PostgreSQL instance, two logically separate databases - one per service.
+  # No service ever reads another service's tables. On day one that is a
+  # convention; in stage 4 of the roadmap it becomes two StatefulSets.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    container_name: learndev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Read by infra/postgres/init/01-create-databases.sql through psql \getenv.
+      ACCOUNT_DB_NAME: ${ACCOUNT_DB_NAME}
+      PRODUCT_DB_NAME: ${PRODUCT_DB_NAME}
+      # Deterministic collation, so ORDER BY behaves the same on every machine.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Scripts here run ONCE, on an empty data directory. `make reset` wipes
+      # the volume if you need them to run again.
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend
+    healthcheck:
+      # $$ escapes the $ so compose passes it through to the shell in the container.
+      #
+      # `-h 127.0.0.1` earns its place. With no host, pg_isready probes the UNIX
+      # socket - and the postgres entrypoint runs a TEMPORARY bootstrap server on
+      # that socket, with listen_addresses empty, while the scripts in
+      # /docker-entrypoint-initdb.d are still executing. So a socket probe reports
+      # healthy BEFORE infra/postgres/init/01-create-databases.sql has created
+      # account_db and product_db: `condition: service_healthy` releases both APIs,
+      # their entrypoints run `prisma migrate deploy`, and the first log line you
+      # see is 'database "account_db" does not exist'. Probing TCP instead waits
+      # for the real server, which starts listening only once init has finished.
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB} -q",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # Identity: registration, login, refresh-token rotation, user profiles.
+  # Owns account_db. Mints the JWTs that product-service verifies.
+  # ---------------------------------------------------------------------------
+  account-service:
+    build:
+      context: ./account-service
+      dockerfile: Dockerfile
+    image: learndev/account-service:local
+    container_name: learndev-account-service
+    restart: unless-stopped
+    environment:
+      # Hardcoded, deliberately NOT ${NODE_ENV}. This file IS the
+      # production-shaped stack and the image is built for production, so the
+      # runtime value must not be overridable from a laptop's .env (which ships
+      # NODE_ENV=development). Interpolating it here would mount Swagger at
+      # /docs and switch the logger out of JSON in the "production" stack.
+      # docker-compose.dev.yml flips it back to development for local work.
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL}
+      ACCOUNT_SERVICE_PORT: ${ACCOUNT_SERVICE_PORT}
+      # Also read by `prisma migrate deploy` in the entrypoint: the schema's
+      # datasource is url = env("ACCOUNT_DATABASE_URL"), not the DATABASE_URL
+      # default, so each service can only ever open its own database.
+      ACCOUNT_DATABASE_URL: ${ACCOUNT_DATABASE_URL}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - edge
+      - backend
+    expose:
+      - "${ACCOUNT_SERVICE_PORT}"
+    healthcheck:
+      # /health is liveness only - it must not touch the database.
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:${ACCOUNT_SERVICE_PORT}/health",
+        ]
+      <<: *node-healthcheck
+    labels:
+      - "traefik.enable=true"
+      # This container sits on two networks; tell Traefik which one to dial.
+      - "traefik.docker.network=learndev_edge"
+      - "traefik.http.routers.account.entrypoints=web"
+      - "traefik.http.routers.account.rule=PathPrefix(`/api/auth`) || PathPrefix(`/api/users`)"
+      - "traefik.http.routers.account.middlewares=account-stripapi@docker"
+      # Traefik strips /api, so the service itself has NO global prefix.
+      - "traefik.http.middlewares.account-stripapi.stripprefix.prefixes=/api"
+      - "traefik.http.services.account.loadbalancer.server.port=${ACCOUNT_SERVICE_PORT}"
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # Catalogue: products and categories. Owns product_db.
+  # Verifies access tokens locally with the shared secret - it has no user
+  # table and makes no call back to account-service.
+  # ---------------------------------------------------------------------------
+  product-service:
+    build:
+      context: ./product-service
+      dockerfile: Dockerfile
+    image: learndev/product-service:local
+    container_name: learndev-product-service
+    restart: unless-stopped
+    environment:
+      # See account-service: pinned to production here, flipped to development
+      # by docker-compose.dev.yml. This service gates its pino-pretty transport
+      # on NODE_ENV, so a leaked "development" here would replace the JSON logs
+      # that stage 5 of the roadmap ships to a log store.
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL}
+      PRODUCT_SERVICE_PORT: ${PRODUCT_SERVICE_PORT}
+      # Schema datasource is url = env("PRODUCT_DATABASE_URL").
+      PRODUCT_DATABASE_URL: ${PRODUCT_DATABASE_URL}
+      # Access secret only. This service verifies tokens, it never issues them,
+      # so it needs no TTL - and it must never be able to accept or mint a
+      # refresh token, so it is not given JWT_REFRESH_SECRET.
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - edge
+      - backend
+    expose:
+      - "${PRODUCT_SERVICE_PORT}"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:${PRODUCT_SERVICE_PORT}/health",
+        ]
+      <<: *node-healthcheck
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=learndev_edge"
+      - "traefik.http.routers.product.entrypoints=web"
+      - "traefik.http.routers.product.rule=PathPrefix(`/api/products`) || PathPrefix(`/api/categories`)"
+      - "traefik.http.routers.product.middlewares=product-stripapi@docker"
+      - "traefik.http.middlewares.product-stripapi.stripprefix.prefixes=/api"
+      - "traefik.http.services.product.loadbalancer.server.port=${PRODUCT_SERVICE_PORT}"
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # Next.js server. Calls both APIs SERVER-SIDE over `edge` and holds the JWTs
+  # in httpOnly cookies, so the browser never sees a token. That is why it does
+  # not need - and must not have - access to the `backend` network.
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* is inlined into the client bundle at BUILD time, so it
+        # has to be a build arg as well as a runtime variable.
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+    image: learndev/frontend:local
+    container_name: learndev-frontend
+    restart: unless-stopped
+    environment:
+      # See account-service. Next's standalone server sets this itself, but
+      # pinning it keeps `secure` cookies and every other
+      # `NODE_ENV === 'production'` branch on the production path.
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL}
+      # `next start` / the standalone server read PORT and HOSTNAME.
+      PORT: ${FRONTEND_PORT}
+      HOSTNAME: "0.0.0.0"
+      FRONTEND_PORT: ${FRONTEND_PORT}
+      API_ACCOUNT_URL: ${API_ACCOUNT_URL}
+      API_PRODUCT_URL: ${API_PRODUCT_URL}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+    depends_on:
+      account-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+    networks:
+      - edge
+    expose:
+      - "${FRONTEND_PORT}"
+    healthcheck:
+      # Prefers a dedicated /health route handler; falls back to the landing
+      # page so the container is not reported unhealthy if /health is absent.
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -T 3 -O /dev/null http://127.0.0.1:${FRONTEND_PORT}/health || wget -q -T 3 -O /dev/null http://127.0.0.1:${FRONTEND_PORT}/",
+        ]
+      <<: *node-healthcheck
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=learndev_edge"
+      - "traefik.http.routers.frontend.entrypoints=web"
+      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
+      # Lowest priority: the /api/* routers above are more specific and win.
+      - "traefik.http.routers.frontend.priority=1"
+      - "traefik.http.services.frontend.loadbalancer.server.port=${FRONTEND_PORT}"
+    logging: *default-logging
+
+# -----------------------------------------------------------------------------
+# Networks are named explicitly so the `traefik.docker.network` labels above
+# stay correct no matter what the compose project is called.
+# -----------------------------------------------------------------------------
+networks:
+  edge:
+    name: learndev_edge
+    driver: bridge
+  backend:
+    name: learndev_backend
+    driver: bridge
+    # Data plane: no route off the host. Postgres is unreachable from anywhere
+    # except the two API containers.
+    internal: true
+
+volumes:
+  pgdata:

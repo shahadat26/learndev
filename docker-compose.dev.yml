@@ -1,0 +1,131 @@
+# =============================================================================
+# Developer override. NEVER used on its own - it is layered on top of the base
+# file, and compose merges the two:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+#
+# (`make up-dev` / `make down` do exactly that.)
+#
+# What it changes:
+#   * publishes 3005 / 3006 / 3007 / 5432 straight to the host, so you can hit
+#     Swagger at http://localhost:3006/docs and point psql or DBeaver at 5432
+#     without going through Traefik - which needs one extra network, see the
+#     `devtools` note at the bottom of this file;
+#   * forces NODE_ENV=development and LOG_LEVEL=debug;
+#   * bind-mounts each project's source and runs `start:dev` / `next dev`, so
+#     saving a file reloads the process inside the container.
+#
+# Two deliberate trade-offs, both dev-only:
+#   1. The production image installs with `--omit=dev`, so the dev container
+#      runs `npm install` on start to pull the toolchain (nest CLI, ts-node,
+#      next). The FIRST boot is slow; afterwards node_modules lives in a named
+#      volume and is reused. That is why start_period below is generous.
+#   2. `entrypoint` is replaced with a plain shell, bypassing the image's
+#      dumb-init/migrate entrypoint, so the command below is fully in control.
+#      The final `exec` keeps Ctrl-C working.
+# =============================================================================
+
+services:
+  traefik:
+    command:
+      - "--configFile=/etc/traefik/traefik.yml"
+      # Verbose router/middleware decisions - invaluable when a rule does not match.
+      - "--log.level=DEBUG"
+
+  postgres:
+    networks:
+      # `backend` keeps its `internal: true` from the base file (see the networks
+      # section at the bottom for why nothing here tries to change that). A
+      # container attached ONLY to an internal network cannot publish a host
+      # port, so postgres joins a second, non-internal network here and the
+      # mapping below lands on that one.
+      - backend
+      - devtools
+    ports:
+      # host:container - lets you run `psql -h localhost -U app account_db`
+      - "5432:5432"
+
+  account-service:
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      # account-service gates pino-pretty on this flag; product-service infers
+      # it from NODE_ENV. Both end up human-readable here, JSON in production.
+      LOG_PRETTY: "true"
+    ports:
+      - "${ACCOUNT_SERVICE_PORT}:${ACCOUNT_SERVICE_PORT}"
+    working_dir: /app
+    volumes:
+      - ./account-service:/app
+      # Named volume masks the bind mount so the container keeps its own
+      # Linux-built node_modules (native Prisma engines differ from Windows).
+      - account_service_node_modules:/app/node_modules
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        npm install --no-audit --no-fund &&
+        npx prisma generate &&
+        npx prisma migrate deploy &&
+        exec npm run start:dev
+    healthcheck:
+      start_period: 240s
+
+  product-service:
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+    ports:
+      - "${PRODUCT_SERVICE_PORT}:${PRODUCT_SERVICE_PORT}"
+    working_dir: /app
+    volumes:
+      - ./product-service:/app
+      - product_service_node_modules:/app/node_modules
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        npm install --no-audit --no-fund &&
+        npx prisma generate &&
+        npx prisma migrate deploy &&
+        exec npm run start:dev
+    healthcheck:
+      start_period: 240s
+
+  frontend:
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+    ports:
+      - "${FRONTEND_PORT}:${FRONTEND_PORT}"
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      # Keep the incremental build cache off the Windows filesystem - it is
+      # both faster and avoids file-watching quirks over a bind mount.
+      - frontend_next_cache:/app/.next
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        npm install --no-audit --no-fund &&
+        exec npm run dev
+    healthcheck:
+      start_period: 240s
+
+networks:
+  # `backend` is deliberately NOT re-declared here, and re-declaring it to flip
+  # `internal: false` would be a trap: docker never recreates an existing network
+  # to apply a changed option. Follow the README and start the base stack first
+  # and learndev_backend is created internal, stays internal when you layer this
+  # file on top, and `psql -h localhost` fails with nothing in any log to explain
+  # it. So the internal data plane is left exactly as the base file defines it
+  # and postgres gets an extra network to publish 5432 on instead.
+  devtools:
+    name: learndev_devtools
+    driver: bridge
+
+volumes:
+  account_service_node_modules:
+  product_service_node_modules:
+  frontend_node_modules:
+  frontend_next_cache:

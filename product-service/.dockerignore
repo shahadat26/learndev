@@ -1,0 +1,50 @@
+# Everything listed here is excluded from the build context - the tarball Docker
+# ships to the daemon before the first instruction runs. Excluding a path makes
+# the context smaller AND the layer cache stabler: a file that never enters the
+# context can never invalidate a COPY.
+#
+# account-service/.dockerignore and product-service/.dockerignore are kept
+# byte-identical on purpose, so a `diff` between the two services only ever
+# shows differences that are real.
+
+# Build output - the image compiles its own in the build stage, and host output
+# can be stale or compiled for a different platform.
+dist
+build
+.next
+
+# Dependencies - `npm ci` installs from the lockfile inside the image, and a
+# host node_modules can hold native modules built for the wrong platform.
+node_modules
+
+# Environment files - a real secret must never be baked into an image layer.
+# .env.example is the exception: it is documentation and holds no real values.
+.env
+.env.*
+!.env.example
+
+# Version control.
+.git
+.gitignore
+
+# Editor and OS noise, plus tool caches.
+.vscode
+.idea
+.DS_Store
+.eslintcache
+*.log
+npm-debug.log*
+*.tsbuildinfo
+
+# Tests and coverage - the image ships the compiled app, never the suite.
+# The leading `**/` matters: it matches at every depth INCLUDING the context
+# root, which a bare `*.spec.ts` would not.
+test
+coverage
+**/*.spec.ts
+**/*.e2e-spec.ts
+
+# Docs and Docker's own files - never read at build or run time.
+README.md
+Dockerfile
+.dockerignore

@@ -1,0 +1,49 @@
+// Prisma schema for product_db.
+//
+// Each microservice owns its own database and its own schema file - there is no
+// shared schema and no cross-service foreign key. That is what makes the two
+// services independently deployable (and independently migratable) later on.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("PRODUCT_DATABASE_URL")
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  slug        String    @unique
+  description String?
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("categories")
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  sku         String   @unique
+  name        String
+  slug        String   @unique
+  description String
+  // Money is an INTEGER number of minor units (cents). Floats/doubles lose
+  // precision under arithmetic, so currency is never stored as a float.
+  priceCents  Int
+  currency    String   @default("USD")
+  stock       Int      @default(0)
+  imageUrl    String?
+  isActive    Boolean  @default(true)
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([isActive])
+  @@map("products")
+}

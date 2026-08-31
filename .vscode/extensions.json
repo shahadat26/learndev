@@ -1,0 +1,21 @@
+{
+  // Recommendations, never requirements: VS Code offers these once, in a
+  // notification, the first time this folder is opened. Nothing in the repo
+  // depends on them - every check runs from the command line and in CI, so a
+  // colleague on another editor gets identical results.
+  //
+  // .gitignore ignores .vscode/* and then un-ignores this one file, because
+  // shared tooling advice belongs in the repo while personal settings do not.
+  "recommendations": [
+    // schema.prisma syntax highlighting, formatting and go-to-definition
+    "Prisma.prisma",
+    // surfaces `npm run lint` inline, with the project's own eslint config
+    "dbaeumer.vscode-eslint",
+    // format on save with the same Prettier CI runs as `npm run format:check`
+    "esbenp.prettier-vscode",
+    // compose files, image/container views, Dockerfile linting
+    "ms-azuretools.vscode-docker",
+    // honours the repo's .editorconfig (LF, final newline, indent width)
+    "EditorConfig.EditorConfig"
+  ]
+}

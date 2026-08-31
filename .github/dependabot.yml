@@ -1,0 +1,88 @@
+# =============================================================================
+# Dependency updates, opened as pull requests that run the full CI workflow.
+#
+# The point is not the bumps. The point is that an unmaintained dependency graph
+# is invisible until the day it is urgent, and that "can we upgrade?" should be
+# answered by a green pipeline rather than by a meeting. Every PR here goes
+# through .github/workflows/ci.yml - lint, format, tests, migration drift,
+# compose validation, image builds and a live-stack smoke test - so a bump you
+# merge is a bump the system has already survived.
+#
+# Five ecosystems: one per npm project (each has its own lockfile), the
+# Dockerfiles, and the workflow actions themselves.
+#
+# Stage 3 of docs/devops-roadmap.md builds on this: once images are pushed and
+# scanned, a base-image bump here is the beginning of a supply-chain story.
+# =============================================================================
+
+version: 2
+
+updates:
+  # ---------------------------------------------------------------------------
+  # npm - one entry per project, because each has its own package-lock.json and
+  # its own blast radius. Grouped so a routine week is one PR per project
+  # instead of fifteen.
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: npm
+    directory: /account-service
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      account-service-minor-and-patch:
+        update-types: [minor, patch]
+    # Majors still arrive as their own PR: NestJS 11 -> 12 or Prisma 6 -> 7 is a
+    # change to read, not a change to rubber-stamp.
+    labels: [dependencies, account-service]
+
+  - package-ecosystem: npm
+    directory: /product-service
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      product-service-minor-and-patch:
+        update-types: [minor, patch]
+    labels: [dependencies, product-service]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor-and-patch:
+        update-types: [minor, patch]
+    labels: [dependencies, frontend]
+
+  # ---------------------------------------------------------------------------
+  # Docker base images. This ecosystem reads FROM lines in Dockerfiles, so it
+  # covers node:24-alpine in the three builds - but NOT the postgres:17-alpine
+  # and traefik:v3.3 pins in docker-compose.yml. Bump those by hand when you
+  # bump these, or add the `docker-compose` ecosystem and find out for yourself
+  # what it does and does not track.
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: docker
+    directories:
+      - /account-service
+      - /product-service
+      - /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, docker]
+
+  # ---------------------------------------------------------------------------
+  # The workflow's own actions. actions/checkout@v4 is a dependency exactly like
+  # any package, it runs with a token, and a stale pin is the easiest supply
+  # chain problem in the repository to fix.
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, github-actions]

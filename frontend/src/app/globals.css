@@ -1,0 +1,112 @@
+@import 'tailwindcss';
+
+/*
+ * Tailwind CSS v4 is configured in CSS, not in a tailwind.config.js.
+ * Everything declared in @theme becomes both a design token and a utility class
+ * (e.g. --color-brand-600 -> bg-brand-600 / text-brand-600).
+ */
+@theme {
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
+  --color-brand-950: #1e1b4b;
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-slate-50);
+    color: var(--color-slate-900);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* A visible focus ring is an accessibility requirement, not a decoration. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+  }
+
+  /*
+   * Tailwind v4 only lets @apply reference real utilities, not other custom
+   * classes, so the shared button rules are expressed as one selector list
+   * instead of a `.btn-primary { @apply btn ... }` chain.
+   */
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold
+      transition-colors disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-primary {
+    @apply bg-brand-600 text-white hover:bg-brand-700;
+  }
+
+  .btn-secondary {
+    @apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-100;
+  }
+
+  .btn-ghost {
+    @apply text-slate-700 hover:bg-slate-200/70;
+  }
+
+  .card {
+    @apply rounded-lg border border-slate-200 bg-white shadow-sm;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-slate-700;
+  }
+
+  .input {
+    @apply block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900
+      placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-200
+      disabled:bg-slate-100;
+  }
+
+  .input-invalid {
+    @apply border-red-500 focus:border-red-500 focus:ring-red-200;
+  }
+
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50
+      focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold
+      focus:text-brand-700 focus:shadow;
+  }
+}

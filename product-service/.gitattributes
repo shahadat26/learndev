@@ -1,0 +1,9 @@
+# Shell scripts MUST keep LF endings. A CRLF docker-entrypoint.sh fails inside
+# the Alpine container with a baffling "no such file or directory" - the kernel
+# reads the shebang as "/bin/sh\r", which does not exist. Windows checkouts with
+# core.autocrlf=true would otherwise rewrite it on clone.
+*.sh text eol=lf
+
+# Prisma emits migration SQL with LF; keep it byte-identical across platforms so
+# the checksum Prisma records for an applied migration stays stable.
+*.sql text eol=lf

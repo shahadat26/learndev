@@ -1,0 +1,55 @@
+// account-service owns account_db and nothing else reads or writes it.
+// "Database per service" is the rule that keeps microservices independently
+// deployable - product-service has its own schema in its own database.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("ACCOUNT_DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id        String  @id @default(uuid())
+  email     String  @unique
+  /// bcrypt hash - never the plaintext, and never serialised out of the API.
+  password  String
+  firstName String?
+  lastName  String?
+  role      Role    @default(USER)
+  isActive  Boolean @default(true)
+
+  refreshTokens RefreshToken[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+/// One row per issued refresh token. Storing them lets us rotate on every use
+/// and revoke on logout - a stateless JWT alone cannot be taken back.
+model RefreshToken {
+  id        String @id @default(uuid())
+  /// The JWT "jti" claim: how we find this row from a presented token.
+  jti       String @unique
+  /// bcrypt hash of the token, so a database leak does not hand out sessions.
+  tokenHash String
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}

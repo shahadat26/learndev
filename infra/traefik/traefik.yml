@@ -1,0 +1,90 @@
+# =============================================================================
+# Traefik v3.3 STATIC configuration.
+#
+# Static vs dynamic is the one Traefik concept worth getting straight early:
+#   * STATIC  - this file. Read once at process start. Entry points, providers,
+#               API/dashboard, logging. Changing it requires restarting Traefik.
+#   * DYNAMIC - routers, services and middlewares. Here they come from the
+#               docker provider, i.e. the `traefik.*` labels in
+#               docker-compose.yml, and are picked up live as containers come
+#               and go. There are deliberately NO routers in this file.
+#
+# Mounted read-only at /etc/traefik/traefik.yml.
+# =============================================================================
+
+global:
+  # A lab should not phone home.
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+# -----------------------------------------------------------------------------
+# Entry points = the TCP ports Traefik listens on. Routers attach to them by
+# name, so these names are part of the contract with docker-compose.yml.
+# -----------------------------------------------------------------------------
+entryPoints:
+  # Public HTTP. Everything a browser touches arrives here.
+  web:
+    address: ":80"
+    forwardedHeaders:
+      # Trust X-Forwarded-* only from the compose bridge networks; otherwise a
+      # client could spoof its own source IP.
+      trustedIPs:
+        - "127.0.0.1/32"
+        - "172.16.0.0/12"
+        - "192.168.0.0/16"
+        - "10.0.0.0/8"
+
+  # Dashboard, ping and the (insecure) API. DEV ONLY - see `api` below.
+  traefik:
+    address: ":8080"
+
+# -----------------------------------------------------------------------------
+# Dashboard.
+#
+# !! DEV ONLY !!  `insecure: true` publishes the API and dashboard on the
+# `traefik` entry point with NO authentication. Anyone who can reach port 8080
+# can read your whole routing table. Before this goes anywhere near a shared
+# environment: set insecure: false, put the dashboard behind a router on `web`
+# with a basicauth (or forward-auth) middleware and TLS, or simply stop
+# publishing 8080 in docker-compose.yml.
+# -----------------------------------------------------------------------------
+api:
+  dashboard: true
+  insecure: true
+
+# -----------------------------------------------------------------------------
+# Liveness endpoint on the `traefik` entry point, used by the container
+# healthcheck (`traefik healthcheck --ping`) in docker-compose.yml.
+# -----------------------------------------------------------------------------
+ping:
+  entryPoint: traefik
+
+# -----------------------------------------------------------------------------
+# Providers = where dynamic configuration comes from.
+#
+# exposedByDefault: false is the important line. Without it every container on
+# the network would get a router auto-generated from its name - including
+# postgres. Opt in explicitly with `traefik.enable=true`.
+# -----------------------------------------------------------------------------
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    watch: true
+    # Only look at containers of this compose project.
+    constraints: "Label(`com.docker.compose.project`, `learndev`)"
+
+# -----------------------------------------------------------------------------
+# Logs. JSON so the same shipper can read Traefik and the Nest services once
+# you reach stage 5 (observability) of the roadmap.
+# -----------------------------------------------------------------------------
+log:
+  level: INFO
+  format: json
+
+accessLog:
+  format: json
+  fields:
+    headers:
+      # Never log Authorization or Cookie headers.
+      defaultMode: drop

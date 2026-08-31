@@ -1,0 +1,52 @@
+# Normalise line endings on commit, check out LF everywhere.
+# Without this, a Windows checkout would write CRLF into shell scripts and the
+# Linux containers would fail with:  /bin/sh^M: bad interpreter
+* text=auto eol=lf
+
+# Files that MUST stay LF because Linux/containers execute or parse them.
+*.sh              text eol=lf
+*.bash            text eol=lf
+*.sql             text eol=lf
+*.yml             text eol=lf
+*.yaml            text eol=lf
+*.toml            text eol=lf
+Dockerfile        text eol=lf
+Dockerfile.*      text eol=lf
+.dockerignore     text eol=lf
+docker-entrypoint.sh text eol=lf
+Makefile          text eol=lf
+*.mk              text eol=lf
+.env.example      text eol=lf
+*.env.example     text eol=lf
+
+# Source and docs - LF as well, but harmless either way.
+*.ts              text eol=lf
+*.tsx             text eol=lf
+*.js              text eol=lf
+*.jsx             text eol=lf
+*.mjs             text eol=lf
+*.cjs             text eol=lf
+*.json            text eol=lf
+*.css             text eol=lf
+*.md              text eol=lf diff=markdown
+*.prisma          text eol=lf
+
+# Windows-only helper scripts keep CRLF.
+*.bat             text eol=crlf
+*.cmd             text eol=crlf
+*.ps1             text eol=crlf
+
+# Binary assets - never touch, never diff.
+*.png             binary
+*.jpg             binary
+*.jpeg            binary
+*.gif             binary
+*.ico             binary
+*.webp            binary
+*.avif            binary
+*.woff            binary
+*.woff2           binary
+*.pdf             binary
+
+# Keep generated lockfiles out of PR diffs by default.
+package-lock.json -diff linguist-generated=true
