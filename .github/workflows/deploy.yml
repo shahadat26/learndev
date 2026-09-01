@@ -1,0 +1,44 @@
+name: Deploy LearnDev
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Deploy LearnDev
+        shell: bash
+        run: |
+          set -e
+
+          cd /opt/apps/learndev
+
+          echo "======================================"
+          echo "Starting LearnDev deployment"
+          echo "======================================"
+
+          echo "Fetching latest code..."
+          git fetch origin master
+
+          echo "Resetting to latest master..."
+          git reset --hard origin/master
+
+          echo "Validating Docker Compose..."
+          docker compose config --quiet
+
+          echo "Building and starting services..."
+          docker compose up -d --build
+
+          echo "Waiting for services..."
+          sleep 10
+
+          echo "Checking services..."
+          docker compose ps
+
+          echo "======================================"
+          echo "LearnDev deployment completed!"
+          echo "======================================"

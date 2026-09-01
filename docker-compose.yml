@@ -42,11 +42,13 @@ services:
   # unless a container opts in with traefik.enable=true.
   # ---------------------------------------------------------------------------
   traefik:
-    image: traefik:v3.3
+    image: traefik:v3
     container_name: learndev-traefik
     restart: unless-stopped
+    environment:
+      DOCKER_API_VERSION: "1.40"
     command:
-      - "--configFile=/etc/traefik/traefik.yml"
+      - --configFile=/etc/traefik/traefik.yml
     ports:
       # public entryPoint
       - "80:80"
@@ -85,6 +87,8 @@ services:
       PRODUCT_DB_NAME: ${PRODUCT_DB_NAME}
       # Deterministic collation, so ORDER BY behaves the same on every machine.
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Scripts here run ONCE, on an empty data directory. `make reset` wipes
@@ -92,6 +96,7 @@ services:
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
     networks:
       - backend
+      - db-admin
     healthcheck:
       # $$ escapes the $ so compose passes it through to the shell in the container.
       #
@@ -304,6 +309,9 @@ networks:
     # Data plane: no route off the host. Postgres is unreachable from anywhere
     # except the two API containers.
     internal: true
+  db-admin:
+    name: learndev_db_admin
+    driver: bridge
 
 volumes:
   pgdata:
