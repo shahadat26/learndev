@@ -7,30 +7,35 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v1.2.2
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            set -e
+      - name: Deploy LearnDev
+        shell: bash
+        run: |
+          set -e
 
-            cd /opt/apps/learndev
+          cd /opt/apps/learndev
 
-            echo "Pulling latest code..."
-            git pull origin master
+          echo "======================================"
+          echo "Starting LearnDev deployment"
+          echo "======================================"
 
-            echo "Building Docker images..."
-            docker compose build
+          echo "Fetching latest code..."
+          git fetch origin master
 
-            echo "Starting services..."
-            docker compose up -d
+          echo "Resetting to latest master..."
+          git reset --hard origin/master
 
-            echo "Deployment completed."
+          echo "Building and starting services..."
+          docker compose up -d --build
 
-            echo "Checking containers..."
-            docker compose ps
+          echo "Checking services..."
+          docker compose ps
+
+          echo "Checking running containers..."
+          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+          echo "======================================"
+          echo "Deployment completed successfully!"
+          echo "======================================"
