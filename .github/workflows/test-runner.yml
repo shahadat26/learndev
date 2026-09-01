@@ -1,0 +1,19 @@
+name: Test Self Hosted Runner
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  test:
+    runs-on: self-hosted
+
+    steps:
+      - name: Test server
+        run: |
+          echo "Hello from LearnDev server!"
+          echo "Hostname: $(hostname)"
+          echo "User: $(whoami)"
+          echo "Docker version:"
+          docker --version
