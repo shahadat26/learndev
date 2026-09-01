@@ -27,15 +27,18 @@ jobs:
           echo "Resetting to latest master..."
           git reset --hard origin/master
 
+          echo "Validating Docker Compose..."
+          docker compose config --quiet
+
           echo "Building and starting services..."
           docker compose up -d --build
+
+          echo "Waiting for services..."
+          sleep 10
 
           echo "Checking services..."
           docker compose ps
 
-          echo "Checking running containers..."
-          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
           echo "======================================"
-          echo "Deployment completed successfully!"
+          echo "LearnDev deployment completed!"
           echo "======================================"
