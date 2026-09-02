@@ -38,10 +38,10 @@ export default async function HomePage() {
       <section className="card overflow-hidden">
         <div className="bg-linear-to-br from-brand-600 to-brand-800 px-6 py-14 text-white sm:px-12">
           <p className="text-sm font-semibold uppercase tracking-widest text-brand-200">
-            Shahadat DevOps learning lab
+            Automatically CI/CD pipeline setup ok.Shahadat DevOps learning lab
           </p>
           <h1 className="mt-3 max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">
-            A small e-commerce site with real production plumbing
+            A Automatically CI/CD pipeline setup ok. small e-commerce site with real production plumbing
           </h1>
           <p className="mt-4 max-w-2xl text-brand-100">
             Next.js renders every page on the server, Traefik routes /api to two NestJS services,
