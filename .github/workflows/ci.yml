@@ -55,7 +55,7 @@ jobs:
         working-directory: ${{ matrix.project }}
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -151,7 +151,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Materialise .env from the committed template
         run: cp .env.example .env
@@ -190,7 +190,7 @@ jobs:
           - frontend
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -223,7 +223,7 @@ jobs:
     needs: [quality, compose]
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Materialise .env from the committed template
         run: cp .env.example .env
