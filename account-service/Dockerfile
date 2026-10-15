@@ -10,7 +10,7 @@
 # --------------------------------------------------------------------------
 # base - shared foundation, pinned to the Node version in .nvmrc
 # --------------------------------------------------------------------------
-FROM node:24-alpine AS base
+FROM node:26-alpine AS base
 WORKDIR /app
 
 # Node was never designed to be PID 1: it does not reap orphaned children and
