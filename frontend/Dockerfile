@@ -5,7 +5,7 @@
 # "npm ci" (never "npm install") installs exactly what package-lock.json pins,
 # which is what makes an image build reproducible.
 # ---------------------------------------------------------------------------
-FROM node:24-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -15,7 +15,7 @@ RUN npm ci
 # NEXT_PUBLIC_* values are inlined into the client bundle here, at BUILD time,
 # which is why the site URL is a build argument and not a runtime variable.
 # ---------------------------------------------------------------------------
-FROM node:24-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_SITE_URL=http://localhost
 ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
@@ -28,7 +28,7 @@ RUN npm run build
 # Stage 3 - runner: ship only the standalone server output.
 # No source, no devDependencies, no build toolchain.
 # ---------------------------------------------------------------------------
-FROM node:24-alpine AS runner
+FROM node:26-alpine AS runner
 RUN apk add --no-cache dumb-init
 WORKDIR /app
 
